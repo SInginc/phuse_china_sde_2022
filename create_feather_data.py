@@ -1,11 +1,16 @@
+import sys
 import time
 import polars as pl
-from faker import Faker
 
 if __name__ == "__main__":
-    data_10m = "data/10000000.csv"
+    nrows = sys.argv[1]
+    feather_file = f"data/feather/{nrows}.feather"
+    csv_data = f"data/csv/{nrows}.csv"
+
+    print(f"Reading {csv_data}")
+    start = time.perf_counter()
     df = pl.read_csv(
-        file=data_10m,
+        file=csv_data,
         has_header=True,
         columns=(
             "id",
@@ -23,7 +28,9 @@ if __name__ == "__main__":
             "weight_kg",
         ),
     )
+    print(f"read Used: {round(time.perf_counter() - start, 4)}")
+
     start = time.perf_counter()
-    print(f"Writing to {data_10m}")
-    df.write_ipc("data/10000000.feather")
+    print(f"Writing to {feather_file}")
+    df.write_ipc(feather_file)
     print(f"Used: {round(time.perf_counter() - start, 4)} seconds.")

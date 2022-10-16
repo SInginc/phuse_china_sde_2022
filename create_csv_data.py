@@ -3,15 +3,16 @@ import sys
 import csv
 import random
 import time
+import gc
 import multiprocessing as mp
 from typing import List, Tuple
 
 from faker import Faker
 
 
-def generate_rows(faker_obj, start: int, end: int) -> List[Tuple]:
+def generate_rows(faker_obj, start: int, end: int, filename: str) -> Tuple:
     print(f"{os.getpid()} running from {start} to {end}")
-    return [generate_row(faker_obj, i) for i in range(start, end)]
+    return filename, [generate_row(faker_obj, i) for i in range(start, end)]
 
 
 def generate_row(faker_obj, row_number) -> Tuple:
@@ -42,19 +43,26 @@ def generate_jobs(n_of_jobs: int, n_of_workers: int) -> List[Tuple[int]]:
         if i != _start:
             res.append((_start, i))
             _start = i
+    if _start <= n_of_jobs:
+        res.append((_start, n_of_jobs + 1))
     return res
 
 
-results = []
-
-
-def collect_results(result) -> None:
-    results.extend(result)
-    print(f"{len(result)} rows appended.")
+def collect_results(callback) -> None:
+    filename, result = callback
+    print(f"Writing {len(result)} data to {filename}...")
+    start = time.perf_counter()
+    with open(filename, "a", encoding="utf-8") as wh:
+        csv_writer = csv.writer(wh, delimiter=",")
+        csv_writer.writerows(result)
+    print(f"{len(result)} rows written to {filename}...")
+    del callback
+    gc.collect()
 
 
 if __name__ == "__main__":
     nrows = int(sys.argv[1])
+    filename = f"data/csv/{nrows}.csv"
     fake_generator = Faker("en_US")
     rownames = (
         "id",
@@ -71,28 +79,20 @@ if __name__ == "__main__":
         "height_cm",
         "weight_kg",
     )
+
+    with open(filename, "w+") as wh:
+        csv_writer = csv.writer(wh, delimiter=",")
+        csv_writer.writerow(rownames)
+
     jobs = generate_jobs(nrows, os.cpu_count())
     start = time.perf_counter()
     pool = mp.Pool(os.cpu_count())
     for job in jobs:
         pool.apply_async(
             func=generate_rows,
-            args=(fake_generator, job[0], job[1]),
+            args=(fake_generator, job[0], job[1], filename),
             callback=collect_results,
         )
     pool.close()
     pool.join()
-    print(
-        f"Used: {round(time.perf_counter() - start, 4)} seconds with {len(results)} rows."
-    )
-
-    filename = f"data/{nrows}.csv"
-    print(f"Writing data to {filename}...")
-    start = time.perf_counter()
-    with open(filename, "w+", encoding="utf-8") as wh:
-        csv_writer = csv.writer(wh, delimiter=",")
-        csv_writer.writerow(rownames)
-        csv_writer.writerows(results)
-    print(
-        f"Used: {round(time.perf_counter() - start, 4)} seconds.\nData written to {filename}..."
-    )
+    print(f"Used: {round(time.perf_counter() - start, 4)} seconds with {nrows} rows.")
